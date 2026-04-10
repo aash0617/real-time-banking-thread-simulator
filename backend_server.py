@@ -39,7 +39,22 @@ def _after_request(resp):
 
 @app.route("/", methods=["GET"])
 def index():
-    return send_file(Path(__file__).with_name("ui_final.html"))
+    local_ui = Path(__file__).with_name("ui_final.html")
+    root_ui = Path(__file__).resolve().parent.parent / "ui_final.html"
+
+    if local_ui.exists():
+        return send_file(local_ui)
+    if root_ui.exists():
+        return send_file(root_ui)
+
+    return (
+        jsonify({
+            "ok": False,
+            "error": "ui_final.html not found",
+            "checked": [str(local_ui), str(root_ui)],
+        }),
+        404,
+    )
 
 
 @app.route("/api/health", methods=["GET", "OPTIONS"])

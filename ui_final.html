@@ -331,7 +331,7 @@ select.ctrl-input option{background:var(--panel);}
 .state-DONE{background:rgba(0,255,136,0.1);color:var(--green);}
 @keyframes blink-badge{0%,100%{opacity:1;}50%{opacity:.5;}}
 
-/* ── CPU VISUALIZATION ── */
+/* ── MEMORY VISUALIZATION ── */
 .cpu-core{
   background:var(--bg3);border:1px solid var(--border);
   border-radius:3px;padding:14px;margin-bottom:10px;
@@ -973,19 +973,6 @@ body.sim-paused .state-RUNNING{
   flex-shrink:0;
 }
 
-.sync-thread-badge{
-  min-width:32px;
-  height:20px;
-  padding:0 4px;
-  border-radius:2px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-weight:700;
-  font-size:9px;
-  flex-shrink:0;
-}
-
 .tooltip-header-info{
   flex:1;
 }
@@ -1176,7 +1163,7 @@ body.sim-paused .state-RUNNING{
 
           <div class="scheduler-stack">
             <div class="scheduler-slot">
-              <div class="sec-title" style="margin-bottom:10px;">CPU Execution Core</div>
+              <div class="sec-title" style="margin-bottom:10px;">Memory Execution Core</div>
               <div class="cpu-core" style="margin-bottom:0;">
                 <div class="cpu-label">KERNEL THREAD — RUNNING</div>
                 <div class="cpu-active-thread" id="cpuThread">— IDLE —</div>
@@ -1204,6 +1191,10 @@ body.sim-paused .state-RUNNING{
                 <div class="metric-card">
                   <div class="metric-val amber" id="mWaiting">0</div>
                   <div class="metric-label">In Queue</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-val" id="mCpuUtil">0%</div>
+                  <div class="metric-label">Mem Utilization</div>
                 </div>
               </div>
             </div>
@@ -1316,6 +1307,22 @@ body.sim-paused .state-RUNNING{
         <div class="balance-change" id="balChange">—</div>
       </div>
 
+      <!-- Memory Ring -->
+      <div class="cpu-ring-wrap">
+        <div class="cpu-ring">
+          <svg width="80" height="80" viewBox="0 0 80 80">
+            <circle cx="40" cy="40" r="32" fill="none" stroke="var(--muted2)" stroke-width="6"/>
+            <circle cx="40" cy="40" r="32" fill="none" stroke="var(--accent)" stroke-width="6"
+              stroke-dasharray="201" stroke-dashoffset="201"
+              stroke-linecap="round" id="ringCircle"
+              style="transition:stroke-dashoffset 1s cubic-bezier(.34,1.2,.64,1);filter:drop-shadow(0 0 4px rgba(0,212,255,0.6));"/>
+          </svg>
+          <div class="cpu-ring-val">
+            <span id="ringPct">0%</span>
+            <span class="cpu-ring-lbl">MEM</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Synchronization status -->
@@ -1325,6 +1332,10 @@ body.sim-paused .state-RUNNING{
         <div style="flex:1;padding:8px;background:var(--bg3);border:1px solid rgba(0,255,136,0.2);border-radius:3px;text-align:center;">
           <div style="font-size:9px;color:var(--green);letter-spacing:1px;">LOCK</div>
           <div style="font-size:13px;font-weight:700;color:var(--green);margin-top:2px;" id="lockStatus">FREE</div>
+        </div>
+        <div style="flex:1;padding:8px;background:var(--bg3);border:1px solid rgba(0,212,255,0.2);border-radius:3px;text-align:center;">
+          <div style="font-size:9px;color:var(--accent);letter-spacing:1px;">THREADS</div>
+          <div style="font-size:13px;font-weight:700;color:var(--accent);margin-top:2px;" id="activeThreads">0</div>
         </div>
         <div style="flex:1;padding:8px;background:var(--bg3);border:1px solid rgba(255,179,0,0.2);border-radius:3px;text-align:center;">
           <div style="font-size:9px;color:var(--amber);letter-spacing:1px;">SWITCHES</div>
@@ -1427,6 +1438,7 @@ let completedCount = 0;
 let totalBusyMs = 0;
 let totalUiGapMs = 0;
 let simStartTime = null;
+let simEndTime = null;
 let pausedAt = null;
 let totalPausedMs = 0;
 let currentBalance = 5000;
@@ -1570,13 +1582,12 @@ async function playBackendSlices(result){
 
     const runTime = Math.max(1, step.runMs || 1);
     const stopBar = animateCpuProgress(runTime);
-    const runStartedAt = Date.now();
     addGanttCell(t.id, t.colorIdx);
 
     await sleep(runTime);
     await waitWhilePaused();
     stopBar();
-    totalBusyMs += Math.min(runTime, Date.now() - runStartedAt);
+    totalBusyMs += runTime;  // use runTime directly — wall-clock includes pause
 
     t.elapsed = (t.elapsed || 0) + runTime;
 
@@ -1722,21 +1733,19 @@ function updateBalance(newBal, delta=0){
 }
 
 function updateCpuRing(pct){
-  const ringCircle = document.getElementById('ringCircle');
-  const ringPct = document.getElementById('ringPct');
-  if(!ringCircle || !ringPct) return;
-
   const clamp = Math.max(0,Math.min(100,pct));
   const circ = 2*Math.PI*32;
   const offset = circ - (circ * clamp / 100);
-  ringCircle.style.strokeDashoffset = offset;
-  ringPct.textContent = Math.round(clamp)+'%';
+  document.getElementById('ringCircle').style.strokeDashoffset = offset;
+  document.getElementById('ringPct').textContent = Math.round(clamp)+'%';
+  document.getElementById('mCpuUtil').textContent = Math.round(clamp)+'%';
 }
 
 function getEffectiveElapsedMs(){
   if(!simStartTime) return 0;
-  const ongoingPauseMs = (isPaused && pausedAt) ? (Date.now() - pausedAt) : 0;
-  return Math.max(0, Date.now() - simStartTime - totalPausedMs - ongoingPauseMs - totalUiGapMs);
+  const wallNow = simEndTime || Date.now();   // freeze when sim ends
+  const ongoingPauseMs = (!simEndTime && isPaused && pausedAt) ? (wallNow - pausedAt) : 0;
+  return Math.max(0, wallNow - simStartTime - totalPausedMs - ongoingPauseMs - totalUiGapMs);
 }
 
 function refreshCpuUtilization(){
@@ -1749,6 +1758,7 @@ function startCpuRingTimer(){
   if(cpuRingTimerId) clearInterval(cpuRingTimerId);
   cpuRingTimerId = setInterval(()=>{
     if(!isRunning) return;
+    if(isPaused) return;    // don't update during pause — value is frozen
     refreshCpuUtilization();
   }, 200);
 }
@@ -1765,6 +1775,7 @@ function updateMetrics(){
   document.getElementById('switchCount').textContent = contextSwitches;
   document.getElementById('mCompleted').textContent = completedCount;
   document.getElementById('mWaiting').textContent = threads.filter(t=>t.state==='READY').length;
+  document.getElementById('activeThreads').textContent = threads.length;  // total loaded, not just RUNNING
 }
 
 // ──────────────────────────────────────────────────
@@ -2070,7 +2081,7 @@ function addGanttCell(threadId, colorIdx){
 }
 
 // ──────────────────────────────────────────────────
-//  CPU PROGRESS BAR ANIMATION
+//  MEMORY PROGRESS BAR ANIMATION
 // ──────────────────────────────────────────────────
 function animateCpuProgress(durationMs){
   const bar = document.getElementById('cpuProgress');
@@ -2134,6 +2145,8 @@ async function startSimulation(){
   // Reset all thread state
   threads.forEach(t => { t.elapsed = 0; t.state = 'READY'; });
   renderThreadList();
+  simStartTime = Date.now();  // start AFTER setup so setup delay is not counted
+  simEndTime = null;
 
   if(selectedAlgo === 'rr'){
     addLog(`Scheduler: <span class="hi">Round Robin</span> | quantum: <span class="hi">${quantum}ms</span>`, 'scheduler');
@@ -2161,6 +2174,7 @@ async function startSimulation(){
   document.getElementById('cpuThread').textContent = '— IDLE —';
   isRunning = false;
   isPaused = false;
+  simEndTime = Date.now();   // freeze elapsed — stops drift after sim ends
   stopCpuRingTimer();
   refreshCpuUtilization();
   document.getElementById('runBtn').disabled = false;
@@ -2248,13 +2262,12 @@ async function runRoundRobin(quantum){
     const remaining = t.processingTime - (t.elapsed || 0);
     const runTime   = Math.min(quantum, remaining);
     const stopBar   = animateCpuProgress(runTime);
-    const runStartedAt = Date.now();
     addGanttCell(t.id, t.colorIdx);
 
     await sleep(runTime);
     await waitWhilePaused();
     stopBar();
-    totalBusyMs += Math.min(runTime, Date.now() - runStartedAt);
+    totalBusyMs += runTime;  // use runTime directly — wall-clock includes pause
 
     t.elapsed = (t.elapsed || 0) + runTime;
 
@@ -2315,13 +2328,12 @@ async function runPriority(quantum){
 
     const runTime = Math.min(quantum, remaining[t.id]);
     const stopBar = animateCpuProgress(runTime);
-    const runStartedAt = Date.now();
     addGanttCell(t.id, t.colorIdx);
 
     await sleep(runTime);
     await waitWhilePaused();
     stopBar();
-    totalBusyMs += Math.min(runTime, Date.now() - runStartedAt);
+    totalBusyMs += runTime;  // use runTime directly — wall-clock includes pause
 
     remaining[t.id] -= runTime;
 
@@ -2347,9 +2359,8 @@ async function runPriority(quantum){
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
 async function sleepUiGap(ms){
-  const startedAt = Date.now();
   await sleep(ms);
-  totalUiGapMs += Date.now() - startedAt;
+  totalUiGapMs += ms;  // use requested ms — JS timers always run slightly long
 }
 
 function releasePauseWaiters(){
@@ -2405,6 +2416,7 @@ function resetAll(){
   releasePauseWaiters();
   stopCpuRingTimer();
   threads = []; threadIdCounter = 1;
+  simEndTime = null;
   contextSwitches = 0; completedCount = 0; totalBusyMs = 0;
   totalUiGapMs = 0;
   pausedAt = null; totalPausedMs = 0;
@@ -2503,7 +2515,7 @@ async function runSyncDemo(){
     const row = document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:6px;font-size:10px;';
     row.innerHTML=`
-      <div class="sync-thread-badge" style="background:${THREAD_COLORS[i%6]}22;border:1px solid ${THREAD_COLORS[i%6]}44;color:${THREAD_COLORS[i%6]};">T${i+1}</div>
+      <div style="width:20px;height:20px;border-radius:2px;background:${THREAD_COLORS[i%6]}22;border:1px solid ${THREAD_COLORS[i%6]}44;color:${THREAD_COLORS[i%6]};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:9px;">T${i+1}</div>
       <div style="flex:1;height:6px;background:var(--muted2);border-radius:2px;overflow:hidden;">
         <div id="sync-bar-${i}" style="height:100%;width:0%;background:${THREAD_COLORS[i%6]};border-radius:2px;transition:width .3s;"></div>
       </div>
@@ -2551,7 +2563,7 @@ async function runSyncDemo(){
     const row = document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:6px;font-size:10px;';
     row.innerHTML=`
-      <div class="sync-thread-badge" style="background:${THREAD_COLORS[i%6]}22;border:1px solid ${THREAD_COLORS[i%6]}44;color:${THREAD_COLORS[i%6]};">T${i+1}</div>
+      <div style="width:20px;height:20px;border-radius:2px;background:${THREAD_COLORS[i%6]}22;border:1px solid ${THREAD_COLORS[i%6]}44;color:${THREAD_COLORS[i%6]};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:9px;">T${i+1}</div>
       <div style="flex:1;height:6px;background:var(--muted2);border-radius:2px;overflow:hidden;">
         <div id="sync-safe-${i}" style="height:100%;width:0%;background:${THREAD_COLORS[i%6]};border-radius:2px;transition:width .4s;"></div>
       </div>

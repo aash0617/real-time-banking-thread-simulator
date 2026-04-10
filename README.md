@@ -124,23 +124,6 @@ To run console demos only:
 python main.py
 ```
 
-## 🤖 Optional ML Evaluation (Train/Test)
-
-This repository now includes a separate ML diagnostics module for train/test checks.
-It is independent from OS thread scheduling simulation.
-
-Run:
-
-```bash
-python ml_evaluation.py
-```
-
-It reports:
-
-* Classification: Accuracy, Precision, Recall, F1 (train and test)
-* Regression: MAE, MSE, RMSE, R2 (train and test)
-* Fit diagnosis: Overfitting / Underfitting / Good fit
-
 ---
 
 ## 📊 Sample Output
