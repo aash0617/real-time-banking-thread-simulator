@@ -251,3 +251,21 @@ def compare_models(account_class, transaction_data):
     print(f"{'='*50}\n")
 
     return results
+
+
+
+# Add at the very end of thread_model.py
+if __name__ == "__main__":
+    from bank_account import BankAccount
+    
+    # Create test transactions
+    test_transactions = [
+        ("deposit", 500),
+        ("withdraw", 200),
+        ("deposit", 300),
+        ("withdraw", 100),
+        ("deposit", 400),
+    ]
+    
+    # Run comparison
+    compare_models(BankAccount, test_transactions)
