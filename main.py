@@ -17,6 +17,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+
+# Import from api_routes.py (now created)
 from api_routes import router
 
 app = FastAPI(
@@ -30,7 +32,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins    = ["http://localhost:5173",   # Vite default
-                        "http://localhost:3000"],   # CRA / alternative
+                        "http://localhost:3000",   # CRA / alternative
+                        "http://localhost:5000"],  # Flask server
     allow_credentials= True,
     allow_methods    = ["*"],
     allow_headers    = ["*"],
@@ -42,13 +45,24 @@ app.include_router(router, prefix="/api")
 
 @app.get("/")
 def root():
-  ui_path = Path(__file__).parent / "ui_final.html"
-  if ui_path.exists():
-    return FileResponse(ui_path)
+    ui_path = Path(__file__).parent / "ui_final.html"
+    if ui_path.exists():
+        return FileResponse(ui_path)
 
-  return {
-    "message": "Banking Transaction Simulator API",
-    "docs"   : "/docs",
-    "api"    : "/api",
-    "note"   : "ui_final.html not found in project root",
-  }
+    return {
+        "message": "Banking Transaction Simulator API",
+        "docs"   : "/docs",
+        "api"    : "/api",
+        "endpoints": {
+            "scheduler": "POST /api/scheduler/simulate",
+            "thread_models": "POST /api/thread-models/compare",
+            "sync_demo": "POST /api/sync-demo",
+            "summary": "GET /api/project-summary"
+        },
+        "note"   : "ui_final.html not found in project root",
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
