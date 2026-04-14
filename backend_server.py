@@ -10,6 +10,9 @@ from flask import Flask, jsonify, request, send_file
 
 from bank_account import BankAccount
 from synchronization import UnsafeBankAccount
+from transaction_thread import TransactionThread
+from scheduler import RoundRobinScheduler
+from thread_model import compare_models
 
 
 app = Flask(__name__)
@@ -263,6 +266,220 @@ def sync_demo():
             "lost": max(0, expected - unsafe),
         }
     )
+
+
+# ============================================================
+# NEW INTEGRATED ENDPOINTS
+# ============================================================
+
+@app.route("/api/thread-models/compare", methods=["POST", "OPTIONS"])
+def api_compare_thread_models():
+    """Compare Many-to-One, One-to-One, and Many-to-Many thread models"""
+    if request.method == "OPTIONS":
+        return _apply_cors(jsonify({"ok": True}))
+    
+    # Define test transactions
+    test_transactions = [
+        ("deposit", 500),
+        ("withdraw", 200),
+        ("deposit", 300),
+        ("withdraw", 100),
+        ("deposit", 400),
+    ]
+    
+    # Run comparison
+    results = compare_models(BankAccount, test_transactions)
+    
+    # Format results
+    formatted_results = {}
+    for name, metrics in results.items():
+        formatted_results[name] = {
+            "time_seconds": metrics["time"],
+            "throughput_per_sec": metrics["throughput_per_sec"],
+            "final_balance": metrics["final_balance"],
+            "expected_balance": metrics["expected_balance"],
+            "balance_error": metrics["balance_error"],
+            "correct": metrics["correct"],
+            "speedup": metrics["speedup_vs_many_to_one"]
+        }
+    
+    return jsonify({
+        "ok": True,
+        "results": formatted_results,
+        "explanation": {
+            "many_to_one": "Sequential - 1 worker handles all transactions (slowest)",
+            "one_to_one": "Parallel - Each transaction gets its own OS thread (fastest)",
+            "many_to_many": "Pooled - 3 workers handle 5 transactions (balanced)"
+        }
+    })
+
+
+@app.route("/api/scheduler/run", methods=["POST", "OPTIONS"])
+def api_run_scheduler():
+    """Run Round Robin scheduler with TransactionThreads"""
+    if request.method == "OPTIONS":
+        return _apply_cors(jsonify({"ok": True}))
+    
+    payload = request.get_json(silent=True) or {}
+    initial_balance = int(payload.get("initialBalance", 1000))
+    time_quantum = float(payload.get("timeQuantum", 1.0))
+    transactions_data = payload.get("transactions", [])
+    
+    if not transactions_data:
+        return jsonify({"ok": False, "error": "No transactions provided"}), 400
+    
+    # Create bank account
+    account = BankAccount("SCHEDULER_ACC", initial_balance)
+    
+    # Create TransactionThreads
+    threads = []
+    for i, txn in enumerate(transactions_data):
+        thread = TransactionThread(
+            thread_id=i + 1,
+            account=account,
+            txn_type=txn.get("type", "deposit"),
+            amount=txn.get("amount", 0),
+            processing_time=1
+        )
+        threads.append(thread)
+    
+    # Create and run scheduler
+    scheduler = RoundRobinScheduler(time_quantum=time_quantum)
+    
+    for thread in threads:
+        scheduler.add_thread(thread)
+    
+    # Run scheduler
+    scheduler.run()
+    
+    # Get metrics
+    metrics = scheduler.get_metrics()
+    
+    return jsonify({
+        "ok": True,
+        "final_balance": account.get_balance(),
+        "transaction_log": account.get_log(),
+        "scheduler_metrics": metrics
+    })
+
+
+@app.route("/api/scheduler/run-simple", methods=["POST", "OPTIONS"])
+def api_run_scheduler_simple():
+    """Run Round Robin scheduler with simple hardcoded transactions for quick testing"""
+    if request.method == "OPTIONS":
+        return _apply_cors(jsonify({"ok": True}))
+    
+    payload = request.get_json(silent=True) or {}
+    initial_balance = int(payload.get("initialBalance", 1000))
+    time_quantum = float(payload.get("timeQuantum", 1.0))
+    
+    # Hardcoded test transactions
+    transactions_data = [
+        {"type": "deposit", "amount": 500},
+        {"type": "withdraw", "amount": 200},
+        {"type": "deposit", "amount": 300},
+        {"type": "withdraw", "amount": 100},
+        {"type": "deposit", "amount": 400},
+    ]
+    
+    # Create bank account
+    account = BankAccount("SCHEDULER_ACC", initial_balance)
+    
+    # Create TransactionThreads
+    threads = []
+    for i, txn in enumerate(transactions_data):
+        thread = TransactionThread(
+            thread_id=i + 1,
+            account=account,
+            txn_type=txn["type"],
+            amount=txn["amount"],
+            processing_time=1
+        )
+        threads.append(thread)
+    
+    # Create and run scheduler
+    scheduler = RoundRobinScheduler(time_quantum=time_quantum)
+    
+    for thread in threads:
+        scheduler.add_thread(thread)
+    
+    # Run scheduler
+    scheduler.run()
+    
+    # Get metrics
+    metrics = scheduler.get_metrics()
+    
+    return jsonify({
+        "ok": True,
+        "final_balance": account.get_balance(),
+        "transaction_log": account.get_log(),
+        "scheduler_metrics": metrics,
+        "transactions_processed": len(threads)
+    })
+
+
+@app.route("/api/project-summary", methods=["GET", "OPTIONS"])
+def api_project_summary():
+    """Get summary of all project features"""
+    if request.method == "OPTIONS":
+        return _apply_cors(jsonify({"ok": True}))
+    
+    return jsonify({
+        "ok": True,
+        "project": "Real-Time Multithreaded Banking Transaction Simulator",
+        "version": "2.0.0",
+        "features": [
+            {
+                "name": "Thread-Safe Banking",
+                "file": "bank_account.py",
+                "description": "BankAccount with threading.Lock for atomic transactions"
+            },
+            {
+                "name": "Race Condition Demo", 
+                "file": "synchronization.py",
+                "description": "Shows unsafe vs safe account behavior"
+            },
+            {
+                "name": "Round Robin Scheduler",
+                "file": "scheduler.py",
+                "description": "CPU scheduling simulation with context switching"
+            },
+            {
+                "name": "Transaction Thread",
+                "file": "transaction_thread.py",
+                "description": "Individual transaction as OS thread"
+            },
+            {
+                "name": "Thread Mapping Models",
+                "file": "thread_model.py",
+                "description": "Many-to-One, One-to-One, Many-to-Many comparisons"
+            },
+            {
+                "name": "ML Transaction Predictor",
+                "file": "ml_evaluation.py",
+                "description": "Random Forest for success/latency prediction"
+            },
+            {
+                "name": "Flask API Server",
+                "file": "backend_server.py",
+                "description": "REST API with Round Robin and Priority scheduling"
+            }
+        ],
+        "endpoints": {
+            "simulate_rr_priority": "POST /api/simulate",
+            "sync_demo": "POST /api/sync-demo",
+            "thread_models": "POST /api/thread-models/compare",
+            "scheduler_run": "POST /api/scheduler/run",
+            "scheduler_simple": "POST /api/scheduler/run-simple",
+            "summary": "GET /api/project-summary",
+            "health": "GET /api/health"
+        },
+        "usage_examples": {
+            "compare_thread_models": "curl -X POST http://localhost:5000/api/thread-models/compare",
+            "run_scheduler": "curl -X POST http://localhost:5000/api/scheduler/run-simple -H 'Content-Type: application/json' -d '{\"initialBalance\":1000,\"timeQuantum\":1}'",
+            "sync_demo": "curl -X POST http://localhost:5000/api/sync-demo"
+        }
+    })
 
 
 if __name__ == "__main__":
