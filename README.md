@@ -66,35 +66,6 @@ Each time the CPU switches from one thread to another, the context switch counte
 
 ---
 
-## 🏗️ Project Architecture
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ PROJECT ARCHITECTURE │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ │
-│ ┌──────────────────────┐ ┌──────────────────────┐ │
-│ │ TERMINAL DEMOS │ │ WEB UI DEMOS │ │
-│ ├──────────────────────┤ ├──────────────────────┤ │
-│ │ thread_model.py │ │ backend_server.py │ │
-│ │ synchronization.py │ │ ui_final.html │ │
-│ │ ml_evaluation.py │ │ main.py (FastAPI) │ │
-│ └──────────┬───────────┘ └──────────┬───────────┘ │
-│ │ │ │
-│ └──────────────┬───────────────┘ │
-│ │ │
-│ ┌───────────────▼───────────────┐ │
-│ │ SHARED COMPONENTS │ │
-│ ├───────────────────────────────┤ │
-│ │ bank_account.py (Thread-safe) │ │
-│ │ transaction_thread.py │ │
-│ │ scheduler.py (Round Robin) │ │
-│ │ api_routes.py (FastAPI) │ │
-│ └───────────────────────────────┘ │
-│ │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-text
-
----
 
 ## 📁 Project Modules
 
